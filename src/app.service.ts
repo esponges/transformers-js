@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
-import * as ffmpeg from 'fluent-ffmpeg';
-import * as path from 'path';
+import * as wav from 'node-wav';
 import { WhisperService } from './whisper';
 const TransformersApi = Function('return import("@xenova/transformers")')();
 
@@ -27,52 +26,58 @@ export class AppService {
     const DEFAULT_QUANTIZED = false;
     const DEFAULT_MULTILINGUAL = false;
 
-    const filePath = 'assets/audio/serious-disciplemaking.mp3';
-    const pcmData = await this.convertToPCM(filePath);
+    const filePath = 'assets/audio/serious-disciplemaking.wav';
+    const fileBuffer = fs.readFileSync(filePath);
 
-    // Create a Float32Array from the PCM data
-    const audio = new Float32Array(pcmData.length / 4);
-    for (let i = 0; i < audio.length; i++) {
-      audio[i] = pcmData.readFloatLE(i * 4);
-    }
+    // the actual file to transcribe
+    let audioData: AudioBuffer | undefined;
+    // Use node-wav to read the audio file and convert it to an audio buffer
+    wav.decode(fileBuffer, (err, audioBuffer) => {
+      if (err) {
+        console.error(err);
+      } else {
+        // Create a new AudioBuffer object from the decoded audio buffer
+        const audioContext = new AudioContext();
+        const audioBufferObject = audioContext.createBuffer(
+          audioBuffer.channels,
+          audioBuffer.samples,
+          audioBuffer.sampleRate,
+        );
 
-    const whisper = new WhisperService();
+        // Copy the audio data to the AudioBuffer object
+        for (let i = 0; i < audioBuffer.channels; i++) {
+          audioBufferObject.getChannelData(i).set(audioBuffer.channelData[i]);
+        }
 
-    return whisper.transcribe(
-      audio,
-      DEFAULT_MODEL,
-      DEFAULT_MULTILINGUAL,
-      DEFAULT_QUANTIZED,
-      DEFAULT_SUBTASK,
-      DEFAULT_LANGUAGE,
-    );
-  }
+        // the actual file to transcribe
+        audioData = audioBufferObject;
 
-  private async convertToPCM(inputPath: string): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const outputPath = path.join(
-        path.dirname(inputPath),
-        `${path.basename(inputPath, path.extname(inputPath))}.pcm`,
-      );
+        let audio: Float32Array | number;
+        if (audioData.numberOfChannels === 2) {
+          const SCALING_FACTOR = Math.sqrt(2);
 
-      ffmpeg(inputPath)
-        .outputOptions([
-          '-f s16le',
-          '-acodec pcm_s16le',
-          '-vn',
-          '-ac 1',
-          '-ar 16000',
-          '-y',
-        ])
-        .save(outputPath)
-        .on('end', () => {
-          const pcmData = fs.readFileSync(outputPath);
-          fs.unlinkSync(outputPath); // Clean up the temporary PCM file
-          resolve(pcmData);
-        })
-        .on('error', (err) => {
-          reject(err);
-        });
+          const left = audioData.getChannelData(0);
+          const right = audioData.getChannelData(1);
+
+          audio = new Float32Array(left.length);
+          for (let i = 0; i < audioData.length; ++i) {
+            audio[i] = (SCALING_FACTOR * (left[i] + right[i])) / 2;
+          }
+        } else {
+          // If the audio is not stereo, we can just use the first channel:
+          audio = audioData.getChannelData(0);
+        }
+        const whisper = new WhisperService();
+
+        return whisper.transcribe(
+          audio,
+          DEFAULT_MODEL,
+          DEFAULT_MULTILINGUAL,
+          DEFAULT_QUANTIZED,
+          DEFAULT_SUBTASK,
+          DEFAULT_LANGUAGE,
+        );
+      }
     });
   }
 }
