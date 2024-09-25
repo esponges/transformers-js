@@ -14,8 +14,14 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Post('transform')
-  async transform(@Body() { text }: TransformDto) {
-    return await this.appService.transform(text);
+  @Post('sentiment-analysis')
+  async transformSentiment(@Body() { text }: TransformDto) {
+    return await this.appService.transformSentiment(text);
+  }
+
+  @Post('whisper')
+  async transformWhisper(@Body() { text }: TransformDto) {
+    console.log(text);
+    return await this.appService.transformWhisper();
   }
 }
