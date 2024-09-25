@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import * as fs from 'fs';
+import * as wav from 'node-wav';
 import { WhisperService } from './whisper';
 const TransformersApi = Function('return import("@xenova/transformers")')();
 
@@ -24,8 +26,34 @@ export class AppService {
     const DEFAULT_QUANTIZED = false;
     const DEFAULT_MULTILINGUAL = false;
 
+    const filePath = 'assets/audio/serious-disciplemaking.mp3';
+    const fileBuffer = fs.readFileSync(filePath);
+
     // the actual file to transcribe
     let audioData: AudioBuffer | undefined;
+    // Use node-wav to read the audio file and convert it to an audio buffer
+    wav.decode(fileBuffer, (err, audioBuffer) => {
+      if (err) {
+        console.error(err);
+      } else {
+        // Create a new AudioBuffer object from the decoded audio buffer
+        const audioContext = new AudioContext();
+        const audioBufferObject = audioContext.createBuffer(
+          audioBuffer.channels,
+          audioBuffer.samples,
+          audioBuffer.sampleRate,
+        );
+
+        // Copy the audio data to the AudioBuffer object
+        for (let i = 0; i < audioBuffer.channels; i++) {
+          audioBufferObject.getChannelData(i).set(audioBuffer.channelData[i]);
+        }
+
+        // the actual file to transcribe
+        audioData = audioBufferObject;
+      }
+    });
+
     let audio: Float32Array | number;
     if (audioData.numberOfChannels === 2) {
       const SCALING_FACTOR = Math.sqrt(2);
