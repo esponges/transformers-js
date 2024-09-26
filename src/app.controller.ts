@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+
 import { AppService } from './app.service';
 
 interface TransformDto {
@@ -20,8 +29,27 @@ export class AppController {
   }
 
   @Post('whisper')
-  async transformWhisper(@Body() { text }: TransformDto) {
-    console.log(text);
-    return await this.appService.transformWhisper();
+  @UseInterceptors(FileInterceptor('audio'))
+  async transcribeAudio(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('model') model: string,
+    @Body('multilingual') multilingual: boolean,
+    @Body('quantized') quantized: boolean,
+    @Body('subtask') subtask: string,
+    @Body('language') language: string,
+  ) {
+    // Convert the audio buffer to Float32Array
+    const audioData = new Float32Array(file.buffer);
+
+    const transcript = await this.appService.transformWhisper(
+      audioData,
+      model,
+      multilingual,
+      quantized,
+      subtask,
+      language,
+    );
+
+    return { transcript };
   }
 }
